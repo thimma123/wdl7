@@ -1,68 +1,95 @@
 const express = require("express");
 const app = express();
-const { Todo } = require("./models");
+var csrf = require("tiny-csrf");
 const bodyParser = require("body-parser");
-const path = require("path");
-const { response } = require("express");
-
+var cookieParser = require("cookie-parser");
 app.use(bodyParser.json());
-app.set("view engine", "ejs");
-app.use(express.static(path.join(__dirname + "/public")));
-// app.use(express.static("public"));
+const path = require("path");
+const { Todo } = require("./models");
+// eslint-disable-next-line no-unused-vars
+const todo = require("./models/todo");
+app.use(express.static(path.join(__dirname, "public")));
+app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser("shh! some secret string"));
+app.use(csrf("this_should_be_32_character_long", ["POST", "PUT", "DELETE"]));
 
-app.get("/", async (req, res) => {
+app.set("view engine", "ejs");
+app.get("/", async (request, response) => {
   const allTodos = await Todo.getTodos();
-  if (req.accepts("html")) {
-    res.render("index", {
+  const overdue = await Todo.overdue();
+  const dueLater = await Todo.dueLater();
+  const dueToday = await Todo.dueToday();
+  const completedItems = await Todo.completedItems();
+  if (request.accepts("html")) {
+    response.render("index", {
+      title: "Todo Application",
       allTodos,
+      overdue,
+      dueLater,
+      dueToday,
+      completedItems,
+      csrfToken: request.csrfToken(),
     });
   } else {
-    res.json(allTodos);
+    response.json(overdue, dueLater, dueToday, completedItems);
   }
 });
 
-app.get("/todos", async (req, res) => {
+app.get("/todos", async (request, response) => {
+  // defining route to displaying message
+  console.log("Todo list");
   try {
-    const todos = await Todo.findAll({ order: [["id", "ASC"]] });
-    return res.json(todos);
+    const todoslist = await Todo.findAll();
+    return response.json(todoslist);
   } catch (error) {
     console.log(error);
-    return res.status(422).json(error);
+    return response.status(422).json(error);
+  }
+});
+app.get("/todos/:id", async function (request, response) {
+  try {
+    const todo = await Todo.findByPk(request.params.id);
+    return response.json(todo);
+  } catch (error) {
+    console.log(error);
+    return response.status(422).json(error);
   }
 });
 
-app.post("/todos", async (req, res) => {
-  console.log("Body : ", req.body);
+app.post("/todos", async (request, response) => {
+  console.log("creating new todo", request.body);
   try {
-    const todo = await Todo.addTodo({
-      title: req.body.title,
-      dueDate: req.body.dueDate,
-      completed: false,
+    // eslint-disable-next-line no-unused-vars
+    await Todo.addTodo({
+      title: request.body.title,
+      dueDate: request.body.dueDate,
+      commpleted: false,
     });
-    return res.json(todo);
+    return response.redirect("/");
   } catch (error) {
     console.log(error);
     return response.status(422).json(error);
   }
 });
-
-app.put("/todos/:id/markAsCompleted", async (req, res) => {
-  console.log("Todo marks completed : ", req.params.id);
-  const todo = await Todo.findByPk(req.params.id);
+//PUT https://mytodoapp.com/todos/123/markAscomplete
+app.put("/todos/:id", async (request, response) => {
+  console.log("Mark Todo as completed:", request.params.id);
+  const todo = await Todo.findByPk(request.params.id);
   try {
-    const updateTodo = await todo.markAsCompleted();
-    return res.json(updateTodo);
+    const updatedtodo = await todo.setCompletionStatus(request.body.completed);
+    return response.json(updatedtodo);
   } catch (error) {
     console.log(error);
     return response.status(422).json(error);
   }
 });
-
-// eslint-disable-next-line no-unused-vars
-app.delete("/todos/:id", async (req, res) => {
-  console.log("We have to delete a Todo with ID: ", req.params.id);
-  const affectedRow = await Todo.destroy({ where: { id: req.params.id } });
-  res.send(affectedRow ? true : false);
+app.delete("/todos/:id", async (request, response) => {
+  console.log("delete a todo with ID:", request.params.id);
+  try {
+    await Todo.remove(request.params.id);
+    return response.json({ success: true });
+  } catch (error) {
+    return response.status(422).json(error);
+  }
 });
-
 module.exports = app;
