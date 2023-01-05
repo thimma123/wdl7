@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "pretest": "NODE_ENV=testnpx sequelize-cli db:drop &&NODE_ENV=testnpx sequelize-cli db:create",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky install"
   },
   "lint-staged": {
     "*.js": [
